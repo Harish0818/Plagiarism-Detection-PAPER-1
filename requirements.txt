@@ -1,0 +1,23 @@
+streamlit
+pandas
+numpy
+spacy
+python-docx
+pymupdf
+sentence-transformers
+transformers
+torch
+networkx
+matplotlib
+plotly
+tqdm
+tenacity
+requests
+scipy
+scikit-learn
+sentence-transformers
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+chromadb
+datasketch
+textstat
+cross-encoder

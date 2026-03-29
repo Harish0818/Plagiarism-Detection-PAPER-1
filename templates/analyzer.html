@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document Analyzer | Academic Integrity Suite</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}" />
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body class="analyzer-page">
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+    <div id="pageLoader" class="page-loader active" aria-live="polite">
+        <div class="loader-core"></div>
+        <p id="loaderText">Initializing integrity engines...</p>
+    </div>
+
+    <header class="site-header">
+        <div class="container nav-wrap">
+            <a href="/" class="brand">
+                <span class="brand-mark">A</span>
+                <span class="brand-text">Academic Integrity Suite</span>
+            </a>
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
+    </header>
+
+    <main>
+        <section class="analyzer-hero">
+            <div class="container reveal">
+                <div class="analyzer-hero-head">
+                    <p class="feature-kicker">Dedicated Workspace</p>
+                    <h1>Document Analyzer</h1>
+                    <p>Focused forensic analysis tab for upload, review, graph insights, and export-ready evidence.</p>
+                </div>
+                <div class="analyzer-icon-grid">
+                    <article class="analyzer-icon-card">
+                        <span class="icon-badge">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8.4-8 9-4.5-.6-8-4-8-9V7l8-4z"/></svg>
+                        </span>
+                        <h3>Secure Checks</h3>
+                        <p>Safe upload and controlled validation pipeline.</p>
+                    </article>
+                    <article class="analyzer-icon-card">
+                        <span class="icon-badge">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 15l3-3 3 2 4-5"/></svg>
+                        </span>
+                        <h3>Risk Insights</h3>
+                        <p>AI, plagiarism, and citation confidence in one pass.</p>
+                    </article>
+                    <article class="analyzer-icon-card">
+                        <span class="icon-badge">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l5 5v13H7zM15 3v5h5"/></svg>
+                        </span>
+                        <h3>Report Export</h3>
+                        <p>Download highlighted reports with top percentage summary.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section id="analyzer" class="analyzer-section analyzer-tab-section">
+            <div class="container">
+                <div class="analyzer-head reveal">
+                    <h2>Upload and Analyze</h2>
+                    <p>Upload your document and continue the same complete analysis workflow.</p>
+                    <div class="analyzer-trust">
+                        <span>Secure local processing</span>
+                        <span>AI + Plagiarism + Citation in one run</span>
+                        <span>Forensic-ready export</span>
+                    </div>
+                </div>
+
+                <div class="upload-panel reveal classy-upload">
+                    <input id="fileInput" type="file" accept=".pdf,.docx,.txt" hidden />
+                    <button id="uploadBtn" class="btn btn-primary">Choose File</button>
+                    <p id="fileNameDisplay" class="file-name">No file selected</p>
+                    <div class="report-actions">
+                        <div class="dropdown">
+                            <button id="downloadMenuBtn" class="btn btn-secondary dropdown-toggle" disabled>Download Report</button>
+                            <div id="downloadMenu" class="dropdown-menu">
+                                <button class="dropdown-item" data-report-type="full">Full Report</button>
+                                <button class="dropdown-item" data-report-type="ai">AI Report</button>
+                                <button class="dropdown-item" data-report-type="plagiarism">Plagiarism Report</button>
+                                <button class="dropdown-item" data-report-type="citations">Citation Report</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="loadingHud" class="loading-hud hidden">
+                    <div class="spinner"></div>
+                    <p id="statusText">Preparing analysis...</p>
+                </div>
+
+                <section id="results" class="results hidden">
+                    <div class="metric-grid">
+                        <article class="metric-card">
+                            <h4>Integrity Score</h4>
+                            <p id="integrityScore">0%</p>
+                        </article>
+                        <article class="metric-card">
+                            <h4>AI Content</h4>
+                            <p id="aiScore">0%</p>
+                        </article>
+                        <article class="metric-card">
+                            <h4>Plagiarism Flags</h4>
+                            <p id="plagScore">0</p>
+                        </article>
+                        <article class="metric-card">
+                            <h4>Citation Errors</h4>
+                            <p id="citeScore">0</p>
+                        </article>
+                    </div>
+
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="summary">Summary</button>
+                        <button class="tab-btn" data-tab="risk">Risk Matrix</button>
+                        <button class="tab-btn" data-tab="ai">AI Analysis</button>
+                        <button class="tab-btn" data-tab="plagiarism">Plagiarism</button>
+                        <button class="tab-btn" data-tab="citations">Citations</button>
+                        <button class="tab-btn" data-tab="system">System Accuracy</button>
+                    </div>
+
+                    <div class="tab-panels">
+                        <div id="tab-summary" class="tab-panel active"></div>
+                        <div id="tab-risk" class="tab-panel"></div>
+                        <div id="tab-ai" class="tab-panel"></div>
+                        <div id="tab-plagiarism" class="tab-panel"></div>
+                        <div id="tab-citations" class="tab-panel"></div>
+                        <div id="tab-system" class="tab-panel"></div>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='analysis.js') }}"></script>
+</body>
+</html>

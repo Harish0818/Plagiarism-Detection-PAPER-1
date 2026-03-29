@@ -1,0 +1,11 @@
+env/
+.venv/
+.vscode/
+__pycache__/
+academic_db/
+academic_cache.json
+*.db
+*.sqlite3
+*.zip
+*.pt
+*.h5
