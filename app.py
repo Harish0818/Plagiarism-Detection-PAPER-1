@@ -3,7 +3,9 @@ import json
 import logging
 import math
 import os
+import re
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
@@ -15,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 try:
-    from utils.text_processing import get_text_processor
+    from utils.text_processing import get_text_processor    
     from utils.plagiarism import PlagiarismDetector
     from utils.ai_detector import NextGenAIDetector
     from utils.citation_analyzer import AdvancedCitationAnalyzer
@@ -220,11 +222,11 @@ class EvaluationMetrics:
 class FlaskAcademicIntegrityApp:
     def __init__(self) -> None:
         self.text_processor = get_text_processor()
-        self.plagiarism_detector = PlagiarismDetector()
+        self.academic_search = AcademicSearch.get_shared_instance() if hasattr(AcademicSearch, "get_shared_instance") else AcademicSearch()
+        self.plagiarism_detector = PlagiarismDetector(searcher=self.academic_search)
         self.ai_detector = NextGenAIDetector()
         self.citation_analyzer = AdvancedCitationAnalyzer()
         self.metrics_tracker = AdvancedMetricsTracker()
-        self.academic_search = AcademicSearch()
         self.report_generator = IntegrityReportGenerator()
         self.evaluation_metrics = EvaluationMetrics()
         self.config = {
@@ -262,9 +264,12 @@ class FlaskAcademicIntegrityApp:
         }
 
         try:
+            stage_timings: Dict[str, float] = {}
+            stage_start = time.perf_counter()
             file_obj = io.BytesIO(file_bytes)
             file_obj.name = filename
             extraction = self.text_processor.extract_text(file_obj, extract_metadata=True)
+            stage_timings["text_extraction_sec"] = round(time.perf_counter() - stage_start, 3)
 
             if not extraction.get("success"):
                 doc_result["error_msg"] = extraction.get("error", "Text extraction failed")
@@ -280,6 +285,7 @@ class FlaskAcademicIntegrityApp:
             doc_result["meta"] = extraction.get("metadata", {})
 
             try:
+                stage_start = time.perf_counter()
                 ai_integrity = self.ai_detector.analyze_document_integrity(text)
                 self.metrics_tracker.record_ai_detection_metrics(
                     filename,
@@ -292,13 +298,18 @@ class FlaskAcademicIntegrityApp:
                     "mean_risk": ai_integrity.get("mean_risk", 0.0),
                     "segments": ai_integrity.get("ai_segments", []),
                     "stylometrics": ai_integrity.get("stylometrics", {}),
-                    "is_ai": ai_integrity.get("ai_percentage", 0.0) > self.config["analysis_thresholds"]["ai_percentage_flag"],
+                    "is_ai": bool(
+                        ai_integrity.get("is_ai_document", False)
+                        or ai_integrity.get("ai_percentage", 0.0) > self.config["analysis_thresholds"]["ai_percentage_flag"]
+                    ),
                     "detection_count": len(ai_integrity.get("ai_segments", [])),
                 }
+                stage_timings["ai_detection_sec"] = round(time.perf_counter() - stage_start, 3)
             except Exception as exc:
                 logger.error("AI engine failure for %s: %s", filename, exc)
 
             try:
+                stage_start = time.perf_counter()
                 plag_results = self.plagiarism_detector.check_plagiarism(
                     text,
                     threshold=self.config["analysis_thresholds"]["plagiarism_similarity"],
@@ -307,10 +318,12 @@ class FlaskAcademicIntegrityApp:
                     "results": plag_results,
                     "match_count": len(plag_results),
                 }
+                stage_timings["plagiarism_detection_sec"] = round(time.perf_counter() - stage_start, 3)
             except Exception as exc:
                 logger.error("Plagiarism engine failure for %s: %s", filename, exc)
 
             try:
+                stage_start = time.perf_counter()
                 cite_results, cite_edges = self.citation_analyzer.analyze_citations(
                     text,
                     academic_search=self.academic_search,
@@ -321,9 +334,11 @@ class FlaskAcademicIntegrityApp:
                     "fraud_count": len(cite_results.get("fraudulent", [])),
                     "edges": cite_edges,
                 }
+                stage_timings["citation_analysis_sec"] = round(time.perf_counter() - stage_start, 3)
             except Exception as exc:
                 logger.error("Citation engine failure for %s: %s", filename, exc)
 
+            stage_start = time.perf_counter()
             analysis_data = {
                 "ai_detection": doc_result["analyses"]["ai_detection"],
                 "plagiarism": doc_result["analyses"]["plagiarism"],
@@ -332,6 +347,9 @@ class FlaskAcademicIntegrityApp:
             evaluation = self.evaluation_metrics.calculate_comprehensive_evaluation(analysis_data)
             doc_result["evaluation"] = evaluation
             doc_result["evidence_table"] = self.evaluation_metrics.get_evidence_table(evaluation)
+            stage_timings["evaluation_sec"] = round(time.perf_counter() - stage_start, 3)
+            doc_result["meta"]["stage_timings"] = stage_timings
+            logger.info("Stage timings for %s: %s", filename, stage_timings)
 
             return doc_result
         except Exception as exc:
@@ -419,37 +437,35 @@ class FlaskAcademicIntegrityApp:
                 cleaned.sort(key=lambda s: raw_text.find(s.lower()[:80]) if raw_text.find(s.lower()[:80]) >= 0 else 10**9)
             return cleaned[:cap]
 
-        def _expand_segments_to_target(segments: List[str], target_pct: float, cap: int = 220) -> List[str]:
-            if not raw_text_original or target_pct <= 0:
-                return segments
-            target_chars = int((target_pct / 100.0) * len(raw_text_original))
-            if target_chars <= 0:
-                return segments
+        def _is_excluded_ai_report_segment(segment: str) -> bool:
+            clean = " ".join(segment.split()).strip()
+            if not clean:
+                return True
 
-            out = list(segments)
-            seen = {s.lower() for s in out}
-            current = sum(len(s) for s in out)
-            if current >= target_chars:
-                return out
+            lower = clean.lower()
+            words = clean.split()
 
-            chunk_size = min(420, max(170, cap))
-            step = max(90, chunk_size // 2)
-            for i in range(0, max(len(raw_text_original) - 1, 1), step):
-                if current >= target_chars or len(out) >= cap:
-                    break
-                chunk = raw_text_original[i:i + chunk_size]
-                chunk = " ".join(chunk.split()).strip()
-                if len(chunk) < 45:
-                    continue
-                key = chunk.lower()
-                if key in seen:
-                    continue
-                seen.add(key)
-                out.append(chunk)
-                current += len(chunk)
-            return out
+            if any(token in lower for token in ("http://", "https://", "www.", "doi.org/", "available:")):
+                return True
+            if lower.startswith(("references", "reference", "bibliography", "doi:", "source:")):
+                return True
+            if re.match(r"^\s*\[\d+\]", clean):
+                return True
+            if re.match(r"^[A-Z0-9\s:._\-()]{4,}$", clean) and len(words) <= 10:
+                return True
+            if any(token in clean for token in ("=", "≈", "∑", "∫", "P(", "w(", "{", "}")):
+                alpha_chars = sum(ch.isalpha() for ch in clean)
+                symbol_chars = sum(not ch.isalnum() and not ch.isspace() for ch in clean)
+                if symbol_chars >= max(4, alpha_chars // 4):
+                    return True
+
+            alpha_tokens = re.findall(r"[A-Za-z]+", clean)
+            if len(alpha_tokens) <= 3 and len(clean) < 40:
+                return True
+            return False
 
         ai_segments = _clean_and_sort_segments(ai_segments_raw, cap=80)
+        ai_segments = [segment for segment in ai_segments if not _is_excluded_ai_report_segment(segment)]
         plagiarism_segments = _clean_and_sort_segments(plagiarism_segments_raw, cap=100)
         ai_content_pct = round(float(doc_result.get("analyses", {}).get("ai_detection", {}).get("confidence", 0.0)) * 100, 2)
 
@@ -463,11 +479,8 @@ class FlaskAcademicIntegrityApp:
         )
 
         if report_type == "ai":
-            target_pct = max(ai_highlight_pct, ai_content_pct)
-            ai_segments = _expand_segments_to_target(ai_segments, target_pct, cap=260)
-            highlight_pct = target_pct
+            highlight_pct = ai_highlight_pct
         elif report_type == "plagiarism":
-            plagiarism_segments = _expand_segments_to_target(plagiarism_segments, plag_highlight_pct, cap=260)
             highlight_pct = plag_highlight_pct
         elif report_type == "citations":
             highlight_pct = round(
