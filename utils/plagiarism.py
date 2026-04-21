@@ -13,6 +13,8 @@ import sys
 from typing import List, Dict, Optional, Tuple
 from pathlib import Path
 import asyncio
+import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, TimeoutError as FutureTimeoutError, as_completed, wait
 from sentence_transformers import SentenceTransformer, util
 
 logger = logging.getLogger(__name__)
@@ -75,7 +77,7 @@ def _dynamic_import(name: str):
     raise ImportError(f"Cannot import module {name}")
 
 class PlagiarismDetector:
-    def __init__(self):
+    def __init__(self, searcher=None):
         # 1. Advanced Manifold Alignment Model
         # Multilingual MPNet is the gold standard for semantic similarity
         try:
@@ -89,8 +91,12 @@ class PlagiarismDetector:
 
         # 2. Dynamic Search Integration
         try:
-            mod = _dynamic_import("academic_search")
-            self.searcher = getattr(mod, "AcademicSearch")()
+            if searcher is not None:
+                self.searcher = searcher
+            else:
+                mod = _dynamic_import("academic_search")
+                search_cls = getattr(mod, "AcademicSearch")
+                self.searcher = search_cls.get_shared_instance() if hasattr(search_cls, "get_shared_instance") else search_cls()
         except Exception as e:
             logger.warning("AcademicSearch unavailable: %s", e)
             self.searcher = None
@@ -114,9 +120,16 @@ class PlagiarismDetector:
         self.match_cache = {}
         self.min_chunk_words = 10
         self.optimal_chunk_words = 50
+        self.max_optimal_chunk_words = 140
+        self.target_chunk_count = 36
+        self.max_ranked_chunks_to_search = 30
         self.min_short_chunk_words = 15
         self.max_candidate_pool = 18
         self.search_results_per_query = 8
+        self.max_queries_per_chunk = 2
+        self.max_sources_per_query = 2
+        self.chunk_retrieval_timeout_sec = 45.0
+        self.backend_query_timeout_sec = 6.0
         self.citation_penalty = 0.12
         self.short_chunk_penalty = 0.10
         self.technical_vocab_boost = 0.05
@@ -134,6 +147,14 @@ class PlagiarismDetector:
             "business": {"crossref": 0.9, "openalex": 0.8, "semantic_scholar": 0.7, "arxiv": 0.3},
             "general": {"semantic_scholar": 0.85, "openalex": 0.8, "crossref": 0.8, "arxiv": 0.65},
         }
+        self.candidate_cache = {}
+        self.rerank_cache = {}
+        self.chunk_priority_cache = {}
+        self.query_routing_cache = {}
+        self.chunk_search_workers = 4
+        self.chunk_search_executor = ThreadPoolExecutor(max_workers=self.chunk_search_workers)
+        self.routing_search_executor = ThreadPoolExecutor(max_workers=4)
+        self.fallback_search_executor = ThreadPoolExecutor(max_workers=2)
 
     def check_plagiarism(self, text: str, threshold: Optional[float] = None) -> List[Dict]:
         """
@@ -142,19 +163,23 @@ class PlagiarismDetector:
         if not text or not text.strip() or not self.model:
             return []
 
-        chunks = self._process_text_into_chunks(text)
+        raw_chunks = self._process_text_into_chunks(text)
+        chunks = raw_chunks
         if not chunks:
             return []
+        chunks = self._prepare_unique_ranked_chunks(chunks)
+        logger.info("Plagiarism chunk prep: raw=%s unique_ranked=%s", len(raw_chunks), len(chunks))
 
         chunk_analyses = []
         best_scores = []
+        precomputed_candidates = self._retrieve_candidates_for_chunks(chunks)
 
         for chunk in chunks:
             chunk_hash = hashlib.md5(chunk.encode()).hexdigest()
             if chunk_hash in self.match_cache:
                 analysis = self.match_cache[chunk_hash]
             else:
-                candidates = self._retrieve_candidates(chunk)
+                candidates = precomputed_candidates.get(chunk, [])
                 scored_candidates = self._align_manifold(chunk, candidates)
                 analysis = {
                     "chunk": chunk,
@@ -194,6 +219,60 @@ class PlagiarismDetector:
 
         return self._deduplicate(all_matches)
 
+    def _retrieve_candidates_for_chunks(self, chunks: List[str]) -> Dict[str, List[Dict]]:
+        if not chunks:
+            return {}
+
+        results: Dict[str, List[Dict]] = {}
+        pending_chunks = []
+        for chunk in chunks:
+            cached = self.candidate_cache.get(chunk)
+            if cached is not None:
+                results[chunk] = cached
+            else:
+                pending_chunks.append(chunk)
+
+        if not pending_chunks:
+            return results
+
+        logger.info("Starting plagiarism candidate retrieval for %s chunks", len(pending_chunks))
+        completed = 0
+        future_map = {self.chunk_search_executor.submit(self._retrieve_candidates, chunk): chunk for chunk in pending_chunks}
+        pending_futures = set(future_map)
+        deadline = time.monotonic() + self.chunk_retrieval_timeout_sec
+        while pending_futures:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            done, pending_futures = wait(
+                pending_futures,
+                timeout=min(2.0, remaining),
+                return_when=FIRST_COMPLETED,
+            )
+            if not done:
+                continue
+            for future in done:
+                chunk = future_map[future]
+                try:
+                    results[chunk] = future.result() or []
+                except Exception as exc:
+                    logger.error("Candidate retrieval failed for chunk: %s", exc)
+                    results[chunk] = []
+                completed += 1
+                if completed == len(pending_chunks) or completed % 5 == 0:
+                    logger.info("Plagiarism candidate retrieval progress: %s/%s chunks", completed, len(pending_chunks))
+
+        if pending_futures:
+            logger.warning(
+                "Plagiarism candidate retrieval timed out after %.1fs; returning partial results for %s/%s chunks",
+                self.chunk_retrieval_timeout_sec,
+                completed,
+                len(pending_chunks),
+            )
+            for future in pending_futures:
+                results[future_map[future]] = []
+        return results
+
     def _align_manifold(self, chunk: str, candidates: list) -> List[Dict]:
         """
         Uses Siamese SBERT plus lexical/cross-encoder reranking to score candidates.
@@ -205,13 +284,14 @@ class PlagiarismDetector:
         source_texts = [c.get("abstract") or c.get("title") or "" for c in candidates]
         source_embs = self.model.encode(source_texts, convert_to_tensor=True)
         cosine_scores = util.cos_sim(chunk_emb, source_embs)[0]
+        cross_scores = self._batch_cross_encoder_scores(chunk, source_texts)
 
         scored_candidates = []
         for i, score in enumerate(cosine_scores):
             semantic_score = float(score)
             candidate_text = source_texts[i]
             lexical_score = self._lexical_overlap(chunk, candidate_text)
-            cross_score = self._cross_encoder_score(chunk, candidate_text)
+            cross_score = cross_scores[i]
             final_score = self._ensemble_score(semantic_score, lexical_score, cross_score)
             candidate = dict(candidates[i])
             scored_candidates.append(
@@ -232,6 +312,9 @@ class PlagiarismDetector:
         """
         if not self.searcher:
             return []
+        cached = self.candidate_cache.get(chunk)
+        if cached is not None:
+            return cached
 
         domain_info = self._classify_chunk_domain(chunk)
         db_weights = self._build_dynamic_db_weights(domain_info["domain"], domain_info["confidence"])
@@ -246,13 +329,17 @@ class PlagiarismDetector:
                     domain_confidence=domain_info["confidence"],
                 )
             )
+            if len(self._deduplicate_candidates(merged)) >= self.max_candidate_pool:
+                break
 
         deduped = self._deduplicate_candidates(merged)
         if not deduped:
             return []
 
         reranked = self._rerank_candidates(chunk, deduped, db_weights)
-        return reranked[: self.max_candidate_pool]
+        final_candidates = reranked[: self.max_candidate_pool]
+        self.candidate_cache[chunk] = final_candidates
+        return final_candidates
 
     def _build_search_queries(self, chunk: str) -> List[str]:
         normalized = " ".join(chunk.split())
@@ -268,6 +355,7 @@ class PlagiarismDetector:
 
         compact = []
         seen = set()
+        signatures = []
         for query in queries:
             cleaned = " ".join(query.split()).strip()
             if len(cleaned) < 20:
@@ -275,9 +363,20 @@ class PlagiarismDetector:
             key = cleaned.lower()
             if key in seen:
                 continue
+            signature = self._query_signature(cleaned)
+            if any(self._signature_overlap(signature, prev_signature) >= 0.85 for prev_signature in signatures):
+                continue
             seen.add(key)
+            signatures.append(signature)
             compact.append(cleaned)
-        return compact[:3]
+        return compact[: self.max_queries_per_chunk]
+
+    def _query_signature(self, query: str) -> set:
+        normalized = self._normalize_chunk_for_dedup(query)
+        signature = self._build_chunk_signature(normalized)
+        if signature:
+            return signature
+        return set(normalized.split())
 
     def _extract_keywords(self, text: str, limit: int = 10) -> List[str]:
         tokens = re.findall(r"[A-Za-z][A-Za-z\-]{3,}", text.lower())
@@ -311,20 +410,35 @@ class PlagiarismDetector:
     def _rerank_candidates(self, chunk: str, candidates: List[Dict], db_weights: Optional[Dict[str, float]] = None) -> List[Dict]:
         if not candidates or not self.searcher:
             return candidates
+        normalized_chunk = self._normalize_chunk_for_dedup(chunk)[:500]
+        candidate_signature = ",".join(
+            self._normalize_chunk_for_dedup((c.get("doi") or c.get("title") or "")[:120])
+            for c in candidates[:25]
+        )
+        cache_key = hashlib.md5(
+            f"{normalized_chunk}::{candidate_signature}".encode()
+        ).hexdigest()
+        cached = self.rerank_cache.get(cache_key)
+        if cached is not None:
+            return [dict(candidate) for candidate in cached]
 
+        pair_texts = [(chunk, candidate.get("abstract") or candidate.get("title") or "") for candidate in candidates]
+        semantic_hints = self.searcher.batch_calculate_similarity(pair_texts, method="cosine")
+        cross_scores = self.searcher.batch_calculate_similarity(pair_texts, method="cross_encoder")
         ranked = []
-        for candidate in candidates:
+        for candidate, semantic_hint, cross_score in zip(candidates, semantic_hints, cross_scores):
             candidate_text = candidate.get("abstract") or candidate.get("title") or ""
             lexical_score = self._lexical_overlap(chunk, candidate_text)
-            semantic_hint = self._safe_similarity(chunk, candidate_text, method="cosine")
-            cross_score = self._cross_encoder_score(chunk, candidate_text)
             rank_score = self._ensemble_score(semantic_hint, lexical_score, cross_score)
             database_weight = self._resolve_database_weight(candidate.get("source", "unknown"), db_weights)
             rank_score = (1 - self.database_weight_ratio) * rank_score + (self.database_weight_ratio * database_weight)
-            candidate["database_weight"] = round(database_weight, 3)
-            ranked.append((rank_score, candidate))
+            candidate_copy = dict(candidate)
+            candidate_copy["database_weight"] = round(database_weight, 3)
+            ranked.append((rank_score, candidate_copy))
         ranked.sort(key=lambda item: item[0], reverse=True)
-        return [candidate for _, candidate in ranked]
+        ordered = [candidate for _, candidate in ranked]
+        self.rerank_cache[cache_key] = [dict(candidate) for candidate in ordered]
+        return ordered
 
     def _classify_chunk_domain(self, chunk: str) -> Dict[str, float]:
         tokens = [tok for tok in re.findall(r"[A-Za-z][A-Za-z\-]{2,}", chunk.lower()) if tok not in STOP_WORDS]
@@ -365,26 +479,59 @@ class PlagiarismDetector:
         matched_domain: str,
         domain_confidence: float,
     ) -> List[Dict]:
-        ordered_sources = sorted(db_weights.items(), key=lambda item: item[1], reverse=True)
-        merged = []
+        normalized_query = self._normalize_chunk_for_dedup(query)
+        cache_key = hashlib.md5(
+            f"{normalized_query}::{matched_domain}::{round(float(domain_confidence), 2)}".encode()
+        ).hexdigest()
+        cached = self.query_routing_cache.get(cache_key)
+        if cached is not None:
+            return [dict(result) for result in cached]
 
-        for source_name, weight in ordered_sources:
-            results = self._search_single_backend(source_name, query)
-            if not results:
+        ordered_sources = sorted(db_weights.items(), key=lambda item: item[1], reverse=True)
+        ordered_sources = ordered_sources[: self.max_sources_per_query]
+        merged = []
+        future_map = {
+            self.routing_search_executor.submit(self._search_single_backend, source_name, query): (source_name, weight)
+            for source_name, weight in ordered_sources
+        }
+        pending_futures = set(future_map)
+        deadline = time.monotonic() + self.backend_query_timeout_sec
+        while pending_futures:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            done, pending_futures = wait(
+                pending_futures,
+                timeout=min(1.5, remaining),
+                return_when=FIRST_COMPLETED,
+            )
+            if not done:
                 continue
-            for result in results:
-                result["database_weight"] = round(weight, 3)
-                result["matched_domain"] = matched_domain
-                result["domain_confidence"] = round(domain_confidence, 3)
-            merged.extend(results)
+            for future in done:
+                source_name, weight = future_map[future]
+                try:
+                    results = future.result() or []
+                except Exception as e:
+                    logger.error("Backend search failed for %s: %s", source_name, e)
+                    results = []
+                if not results:
+                    continue
+                for result in results:
+                    result["database_weight"] = round(weight, 3)
+                    result["matched_domain"] = matched_domain
+                    result["domain_confidence"] = round(domain_confidence, 3)
+                merged.extend(results)
+
+            if len(self._deduplicate_candidates(merged)) >= self.max_candidate_pool:
+                break
 
         if merged:
-            return merged
+            deduped = self._deduplicate_candidates(merged)
+            self.query_routing_cache[cache_key] = [dict(result) for result in deduped]
+            return deduped
 
         try:
-            fallback = self.loop.run_until_complete(
-                self.searcher.search_parallel(query, max_results=self.search_results_per_query)
-            )
+            fallback = self._run_parallel_search_fallback(query)
         except Exception as e:
             logger.error("Fallback search failed for query '%s': %s", query[:80], e)
             fallback = []
@@ -394,7 +541,22 @@ class PlagiarismDetector:
             result["database_weight"] = round(self._resolve_database_weight(source_name, db_weights), 3)
             result["matched_domain"] = matched_domain
             result["domain_confidence"] = round(domain_confidence, 3)
-        return fallback or []
+        fallback = self._deduplicate_candidates(fallback or [])
+        self.query_routing_cache[cache_key] = [dict(result) for result in fallback]
+        return fallback
+
+    def _run_parallel_search_fallback(self, query: str) -> List[Dict]:
+        if not self.searcher:
+            return []
+
+        future = self.fallback_search_executor.submit(
+            lambda: asyncio.run(self.searcher.search_parallel(query, max_results=self.search_results_per_query))
+        )
+        try:
+            return future.result(timeout=self.backend_query_timeout_sec + 1.0) or []
+        except FutureTimeoutError:
+            logger.warning("Fallback search timed out for query '%s'", query[:80])
+            return []
 
     def _search_single_backend(self, source_name: str, query: str) -> List[Dict]:
         backend_map = {
@@ -539,6 +701,12 @@ class PlagiarismDetector:
             return 0.0
         return self._safe_similarity(text1, text2, method="cross_encoder")
 
+    def _batch_cross_encoder_scores(self, text1: str, texts2: List[str]) -> List[float]:
+        if not self.searcher or not texts2:
+            return [0.0 for _ in texts2]
+        pairs = [(text1, text2) for text2 in texts2]
+        return self.searcher.batch_calculate_similarity(pairs, method="cross_encoder")
+
     def _safe_similarity(self, text1: str, text2: str, method: str) -> float:
         try:
             return float(self.searcher.calculate_similarity(text1, text2, method=method))
@@ -567,11 +735,13 @@ class PlagiarismDetector:
         if not sentences:
             sentences = [s.strip() for s in re.split(r"[.!?]", text) if len(s.split()) > 3]
 
+        total_words = sum(len(sentence.split()) for sentence in sentences)
+        adaptive_chunk_words = self._get_adaptive_chunk_word_target(total_words)
         chunks = []
         curr, curr_len = [], 0
         for s in sentences:
             words = s.split()
-            if curr_len + len(words) > self.optimal_chunk_words and curr:
+            if curr_len + len(words) > adaptive_chunk_words and curr:
                 chunks.append(" ".join(curr))
                 curr, curr_len = [s], len(words)
             else:
@@ -580,6 +750,127 @@ class PlagiarismDetector:
         if curr: chunks.append(" ".join(curr))
         
         return [c for c in chunks if len(c.split()) >= self.min_chunk_words]
+
+    def _get_adaptive_chunk_word_target(self, total_words: int) -> int:
+        if total_words <= 0:
+            return self.optimal_chunk_words
+        estimated = max(self.optimal_chunk_words, int(total_words / max(self.target_chunk_count, 1)))
+        return min(self.max_optimal_chunk_words, estimated)
+
+    def _prepare_unique_ranked_chunks(self, chunks: List[str]) -> List[str]:
+        """Deduplicate repeated chunk content and process the strongest unique chunks first."""
+        normalized_records = []
+        seen_exact = set()
+        for idx, chunk in enumerate(chunks):
+            clean_chunk = " ".join(chunk.split()).strip()
+            if not clean_chunk:
+                continue
+            exact_key = clean_chunk.lower()
+            if exact_key in seen_exact:
+                continue
+            seen_exact.add(exact_key)
+            normalized_records.append(
+                {
+                    "original_index": idx,
+                    "chunk": clean_chunk,
+                    "normalized": self._normalize_chunk_for_dedup(clean_chunk),
+                }
+            )
+
+        unique_records = []
+        seen_signatures = []
+        for record in normalized_records:
+            signature = self._build_chunk_signature(record["normalized"])
+            if any(self._signature_overlap(signature, prev_signature) >= 0.88 for prev_signature in seen_signatures):
+                continue
+            seen_signatures.append(signature)
+            unique_records.append(record)
+
+        ranked_records = sorted(
+            unique_records,
+            key=lambda record: (
+                -self._score_chunk_priority(record["chunk"]),
+                record["original_index"],
+            ),
+        )
+
+        if len(ranked_records) <= self.max_ranked_chunks_to_search:
+            return [record["chunk"] for record in ranked_records]
+
+        selected_records = ranked_records[: self.max_ranked_chunks_to_search]
+        selected_keys = {record["chunk"].lower() for record in selected_records}
+        citation_backfill = [
+            record
+            for record in ranked_records[self.max_ranked_chunks_to_search :]
+            if self._has_citation_pattern(record["chunk"]) and record["chunk"].lower() not in selected_keys
+        ]
+        selected_records.extend(citation_backfill[:4])
+        logger.info(
+            "Plagiarism ranked chunk cap applied: using %s of %s chunks",
+            len(selected_records),
+            len(ranked_records),
+        )
+        return [record["chunk"] for record in selected_records]
+
+    @staticmethod
+    def _normalize_chunk_for_dedup(chunk: str) -> str:
+        chunk = chunk.lower()
+        chunk = re.sub(r"\s+", " ", chunk)
+        chunk = re.sub(r"[^\w\s]", " ", chunk)
+        return " ".join(chunk.split()).strip()
+
+    def _build_chunk_signature(self, normalized_chunk: str) -> set:
+        tokens = [token for token in normalized_chunk.split() if token not in STOP_WORDS]
+        if len(tokens) <= 12:
+            return set(tokens)
+        signature = set(tokens[:8] + tokens[-8:])
+        keywords = self._extract_keywords(" ".join(tokens), limit=8)
+        signature.update(keywords)
+        return signature
+
+    @staticmethod
+    def _signature_overlap(sig_a: set, sig_b: set) -> float:
+        if not sig_a or not sig_b:
+            return 0.0
+        union = sig_a | sig_b
+        if not union:
+            return 0.0
+        return len(sig_a & sig_b) / len(union)
+
+    def _score_chunk_priority(self, chunk: str) -> float:
+        cached = self.chunk_priority_cache.get(chunk)
+        if cached is not None:
+            return cached
+
+        words = chunk.split()
+        word_count = len(words)
+        lexical_tokens = [w for w in re.findall(r"[A-Za-z][A-Za-z\-]{2,}", chunk.lower()) if w not in STOP_WORDS]
+        lexical_diversity = len(set(lexical_tokens)) / max(len(lexical_tokens), 1)
+        citation_bonus = 0.24 if self._has_citation_pattern(chunk) else 0.0
+        technical_density = self._technical_density(chunk)
+        technical_bonus = technical_density * 0.55
+        keyword_bonus = min(len(self._extract_keywords(chunk, limit=12)) / 12.0, 1.0) * 0.20
+        length_bonus = min(word_count / 90.0, 1.0) * 0.16
+        diversity_bonus = lexical_diversity * 0.12
+        numeric_evidence_bonus = min(len(re.findall(r"\b\d+(?:\.\d+)?%?\b", chunk)) / 6.0, 1.0) * 0.08
+        proper_noun_bonus = min(len(re.findall(r"\b[A-Z][a-z]{2,}\b", chunk)) / 10.0, 1.0) * 0.06
+        sentence_count = max(1, len([s for s in re.split(r"[.!?]+", chunk) if s.strip()]))
+        sentence_balance = min(word_count / sentence_count, 28) / 28.0
+        coherence_bonus = sentence_balance * 0.08
+        priority_score = (
+            citation_bonus
+            + technical_bonus
+            + keyword_bonus
+            + length_bonus
+            + diversity_bonus
+            + numeric_evidence_bonus
+            + proper_noun_bonus
+            + coherence_bonus
+        )
+        if technical_density >= self.technical_density_threshold:
+            priority_score += 0.04
+        self.chunk_priority_cache[chunk] = priority_score
+        return priority_score
 
     def _deduplicate(self, matches: List[Dict]) -> List[Dict]:
         """Removes overlapping or redundant flags."""
