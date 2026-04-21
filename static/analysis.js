@@ -219,6 +219,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const citeResults = cite.results || data.citations || {};
         const fraudulent = Array.isArray(citeResults.fraudulent) ? citeResults.fraudulent : [];
         const valid = Array.isArray(citeResults.valid) ? citeResults.valid : [];
+        const invalid = Array.isArray(citeResults.invalid) ? citeResults.invalid : [];
+        const irrelevant = Array.isArray(citeResults.irrelevant) ? citeResults.irrelevant : [];
+        const citationStats = citeResults.statistics || {};
+        const totalCitations = Number(
+            citationStats.total
+            ?? (valid.length + fraudulent.length + invalid.length + irrelevant.length)
+        );
         const edges = Array.isArray(data.citation_edges)
             ? data.citation_edges
             : (Array.isArray(cite.edges) ? cite.edges : []);
@@ -226,7 +233,7 @@ document.addEventListener("DOMContentLoaded", () => {
         integrityScore.textContent = `${(Number(evalData.overall_accuracy || 0) * 100).toFixed(1)}%`;
         aiScore.textContent = `${(aiPct * 100).toFixed(1)}%`;
         plagScore.textContent = String(plag.match_count ?? plagiarismResults.length);
-        citeScore.textContent = String(cite.fraud_count ?? fraudulent.length);
+        citeScore.textContent = String(totalCitations);
 
         panels.summary.innerHTML = panelShell("Summary", `
             <div class="list reveal-list">
@@ -315,32 +322,37 @@ document.addEventListener("DOMContentLoaded", () => {
             : panelShell("Plagiarism", "<div class='item'>No significant semantic matches found.</div>", "plagiarism", "plagiarism");
 
         panels.citations.innerHTML = panelShell("Citations", `
-            <div class="analysis-stat-grid">
-                <div class="analysis-stat-card tone-ok">
-                    <span>Valid Citations</span>
-                    <strong>${valid.length}</strong>
-                </div>
-                <div class="analysis-stat-card tone-danger">
-                    <span>Contradictions</span>
-                    <strong>${fraudulent.length}</strong>
-                </div>
-                <div class="analysis-stat-card tone-soft">
-                    <span>Invalid / Irrelevant</span>
-                    <strong>${(Array.isArray(citeResults.invalid) ? citeResults.invalid.length : 0) + (Array.isArray(citeResults.irrelevant) ? citeResults.irrelevant.length : 0)}</strong>
-                </div>
-            </div>
-            <div class="analysis-grid">
-                <div class="analysis-section-card">
+            <div class="citation-layout">
+                <div class="analysis-section-card citation-graph-card">
                     <h4>Citation Network Graph</h4>
-                    <div id="citationGraph" class="graph-box"></div>
+                    <div id="citationGraph" class="graph-box citation-graph-box"></div>
                 </div>
-                <div class="analysis-section-card">
-                    <h4>Fraud / Contradiction Alerts</h4>
-                ${fraudulent.slice(0, 8).map((f) => `
-                    <div class="item compact-item"><strong>${escapeHtml(f.citation || "Unknown citation")}</strong><br>
-                    Status: ${escapeHtml(f.status || "Contradiction")} | Confidence: ${formatNum(f.confidence)}</div>
-                `).join("")}
-                ${fraudulent.length ? "" : "<div class='empty-state'>No citation contradictions detected.</div>"}
+                <div class="analysis-section-card citation-alerts-card">
+                    <div class="citation-alerts-head">
+                        <h4>Fraud / Contradiction Alerts</h4>
+                        <span class="citation-alert-count">${fraudulent.length}</span>
+                    </div>
+                    ${fraudulent.slice(0, 8).map((f, idx) => `
+                        <details class="dropdown-detail citation-alert-detail"${idx === 0 ? " open" : ""}>
+                            <summary>
+                                <span class="citation-alert-code">${escapeHtml(f.citation || `[${idx + 1}]`)}</span>
+                                <span class="detail-summary-title">${escapeHtml(f.reference_title || f.source_title || f.graph_label || `Alert ${idx + 1}`)}</span>
+                                <span class="detail-summary-meta">${escapeHtml(f.status || "Contradiction")} | ${formatNum(f.confidence)}</span>
+                            </summary>
+                            <div class="preview-box citation-alert-body">
+                                <div class="citation-detail-grid">
+                                    <div><strong>Citation:</strong> ${escapeHtml(f.citation || "Unknown citation")}</div>
+                                    <div><strong>Status:</strong> ${escapeHtml(f.status || "Contradiction")}</div>
+                                    <div><strong>Confidence:</strong> ${formatNum(f.confidence)}</div>
+                                    <div><strong>Matched Source:</strong> ${escapeHtml(f.source_title || "Not resolved")}</div>
+                                </div>
+                                ${f.reference_title ? `<div class="citation-context-block"><strong>Reference Title:</strong><br>${escapeHtml(f.reference_title)}</div>` : ""}
+                                ${f.reference_entry ? `<div class="citation-context-block"><strong>Reference Entry:</strong><br>${escapeHtml(f.reference_entry)}</div>` : ""}
+                                ${f.context ? `<div class="citation-context-block"><strong>Claim Context:</strong><br>${escapeHtml(f.context)}</div>` : ""}
+                            </div>
+                        </details>
+                    `).join("")}
+                    ${fraudulent.length ? "" : "<div class='empty-state'>No citation contradictions detected.</div>"}
                 </div>
             </div>
         `, "citations", "citations");
@@ -348,25 +360,54 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const evidenceRows = Array.isArray(data.evidence_table) ? data.evidence_table : [];
         const evidenceHtml = evidenceRows.length
-            ? evidenceRows.map((r) => `
-                <div class="item">
-                    <strong>${escapeHtml(r.Metric || "Metric")}</strong><br>
-                    Value: ${escapeHtml(r.Value || "-")}<br>
-                    Confidence: ${escapeHtml(r.Confidence || "-")}<br>
-                    Interpretation: ${escapeHtml(r.Interpretation || "-")}
-                </div>
+            ? evidenceRows.map((r, idx) => `
+                <details class="dropdown-detail system-metric-detail">
+                    <summary>
+                        <span class="detail-summary-title">${escapeHtml(r.Metric || `Metric ${idx + 1}`)}</span>
+                        <span class="detail-summary-meta">${escapeHtml(r.Confidence || "-")}</span>
+                    </summary>
+                    <div class="preview-box">
+                        <strong>Value:</strong> ${escapeHtml(r.Value || "-")}<br>
+                        <strong>Confidence:</strong> ${escapeHtml(r.Confidence || "-")}<br>
+                        <strong>Interpretation:</strong> ${escapeHtml(r.Interpretation || "-")}
+                    </div>
+                </details>
             `).join("")
-            : "<div class='item'>No evidence table generated.</div>";
+            : "<div class='empty-state'>No evidence table generated.</div>";
 
         panels.system.innerHTML = panelShell("System Accuracy", `
-            <div class="list reveal-list">
-                <div class="item"><strong>Integrity Score:</strong> ${(Number(evalData.overall_accuracy || 0) * 100).toFixed(1)}%</div>
-                <div class="item"><strong>F1-Score:</strong> ${formatNum(evalData.f1_score)}</div>
-                <div class="item"><strong>Precision:</strong> ${formatNum(evalData.precision)}</div>
-                <div class="item"><strong>Recall:</strong> ${formatNum(evalData.recall)}</div>
-                <div class="item"><strong>AI Confidence:</strong> ${(Number(evalData.ai_confidence || 0) * 100).toFixed(1)}%</div>
-                <div class="item"><strong>Plagiarism Confidence:</strong> ${(Number(evalData.plagiarism_confidence || 0) * 100).toFixed(1)}%</div>
-                <div class="item"><strong>Citation Confidence:</strong> ${(Number(evalData.citation_confidence || 0) * 100).toFixed(1)}%</div>
+            <div class="system-summary-card">
+                <span class="system-summary-label">Main System Accuracy</span>
+                <strong class="system-summary-value">${(Number(evalData.overall_accuracy || 0) * 100).toFixed(1)}%</strong>
+                <p class="system-summary-note">Primary integrity confidence across AI, plagiarism, and citation analysis.</p>
+            </div>
+            <div class="analysis-stat-grid system-stat-grid">
+                <div class="analysis-stat-card tone-mid">
+                    <span>F1 Score</span>
+                    <strong>${formatNum(evalData.f1_score)}</strong>
+                </div>
+                <div class="analysis-stat-card tone-soft">
+                    <span>Precision</span>
+                    <strong>${formatNum(evalData.precision)}</strong>
+                </div>
+                <div class="analysis-stat-card tone-soft">
+                    <span>Recall</span>
+                    <strong>${formatNum(evalData.recall)}</strong>
+                </div>
+            </div>
+            <div class="analysis-section-card">
+                <h4>Metric Details</h4>
+                <details class="dropdown-detail system-metric-detail">
+                    <summary>
+                        <span class="detail-summary-title">Confidence Breakdown</span>
+                        <span class="detail-summary-meta">3 values</span>
+                    </summary>
+                    <div class="preview-box">
+                        <strong>AI Confidence:</strong> ${(Number(evalData.ai_confidence || 0) * 100).toFixed(1)}%<br>
+                        <strong>Plagiarism Confidence:</strong> ${(Number(evalData.plagiarism_confidence || 0) * 100).toFixed(1)}%<br>
+                        <strong>Citation Confidence:</strong> ${(Number(evalData.citation_confidence || 0) * 100).toFixed(1)}%
+                    </div>
+                </details>
                 ${evidenceHtml}
             </div>
         `, "system", "full");
@@ -440,27 +481,61 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const nodeMap = new Map();
-        edges.forEach((edge) => {
-            const source = String(edge[0] || "Document");
-            const target = String(edge[1] || "Citation");
+        const normalizedEdges = edges
+            .map((edge) => normalizeCitationEdge(edge))
+            .filter(Boolean);
+
+        if (!normalizedEdges.length) {
+            graphNode.innerHTML = "<p>No citation links available for network graph.</p>";
+            return;
+        }
+
+        normalizedEdges.forEach((edge) => {
+            const source = String(edge.source || "Document");
+            const target = String(edge.target || "Citation");
             if (!nodeMap.has(source)) nodeMap.set(source, { label: source, type: "doc" });
             if (!nodeMap.has(target)) nodeMap.set(target, { label: target, type: "cite" });
         });
 
         const nodes = [...nodeMap.values()];
-        const count = nodes.length;
-        const angleStep = (Math.PI * 2) / Math.max(count, 1);
-        const positions = nodes.map((_, i) => ({
-            x: Math.cos(i * angleStep),
-            y: Math.sin(i * angleStep),
-        }));
+        const docNodes = nodes.filter((node) => node.type === "doc");
+        const citeNodes = nodes.filter((node) => node.type === "cite");
+        const positions = [];
+
+        if (docNodes.length === 1 && citeNodes.length >= 1) {
+            const docLabel = docNodes[0].label;
+            const singleDocPosition = { x: 1.08, y: 0 };
+            nodes.forEach((node) => {
+                if (node.label === docLabel) {
+                    positions.push(singleDocPosition);
+                    return;
+                }
+                const citeIndex = citeNodes.findIndex((entry) => entry.label === node.label);
+                const divisor = Math.max(citeNodes.length - 1, 1);
+                const ratio = citeNodes.length === 1 ? 0.5 : citeIndex / divisor;
+                const angle = -1.15 + (2.3 * ratio);
+                positions.push({
+                    x: -0.25 - (0.85 * Math.cos(angle)),
+                    y: 1.05 * Math.sin(angle),
+                });
+            });
+        } else {
+            const count = nodes.length;
+            const angleStep = (Math.PI * 2) / Math.max(count, 1);
+            nodes.forEach((_, i) => {
+                positions.push({
+                    x: Math.cos(i * angleStep),
+                    y: Math.sin(i * angleStep),
+                });
+            });
+        }
 
         const indexByLabel = new Map(nodes.map((n, i) => [n.label, i]));
         const edgeX = [];
         const edgeY = [];
-        edges.forEach((edge) => {
-            const si = indexByLabel.get(String(edge[0] || "Document"));
-            const ti = indexByLabel.get(String(edge[1] || "Citation"));
+        normalizedEdges.forEach((edge) => {
+            const si = indexByLabel.get(String(edge.source || "Document"));
+            const ti = indexByLabel.get(String(edge.target || "Citation"));
             if (si === undefined || ti === undefined) return;
             edgeX.push(positions[si].x, positions[ti].x, null);
             edgeY.push(positions[si].y, positions[ti].y, null);
@@ -478,13 +553,13 @@ document.addEventListener("DOMContentLoaded", () => {
             x: positions.map((p) => p.x),
             y: positions.map((p) => p.y),
             mode: "markers+text",
-            text: nodes.map((n) => n.label.length > 34 ? `${n.label.slice(0, 34)}...` : n.label),
+            text: nodes.map((n) => shortGraphLabel(n.label, 32)),
             textposition: "top center",
             hovertext: nodes.map((n) => n.label),
             hoverinfo: "text",
             marker: {
-                size: nodes.map((n) => n.type === "doc" ? 22 : 14),
-                color: nodes.map((n) => n.type === "doc" ? "#0e4a5a" : "#14b8a6"),
+                size: nodes.map((n) => n.type === "doc" ? 24 : 13),
+                color: nodes.map((n) => n.type === "doc" ? "#5f8793" : "#4ec7bc"),
                 line: { color: "#ffffff", width: 1.5 },
             },
             type: "scatter",
@@ -494,8 +569,8 @@ document.addEventListener("DOMContentLoaded", () => {
             margin: { l: 20, r: 20, t: 20, b: 20 },
             xaxis: { visible: false },
             yaxis: { visible: false },
-            paper_bgcolor: "#f7fbfd",
-            plot_bgcolor: "#f7fbfd",
+            paper_bgcolor: "#f4f8fb",
+            plot_bgcolor: "#f4f8fb",
             showlegend: false,
         };
 
@@ -571,6 +646,35 @@ document.addEventListener("DOMContentLoaded", () => {
     function formatNum(value) {
         const n = Number(value || 0);
         return Number.isFinite(n) ? n.toFixed(3) : "0.000";
+    }
+
+    function normalizeCitationEdge(edge) {
+        if (!edge) return null;
+        if (Array.isArray(edge)) {
+            return {
+                source: String(edge[0] || "Document"),
+                target: String(edge[1] || "Citation"),
+                status: String(edge[2] || ""),
+                confidence: Number(edge[3] || 0),
+            };
+        }
+        if (typeof edge === "object") {
+            return {
+                source: String(edge.source || "Document"),
+                target: String(edge.target || "Citation"),
+                status: String(edge.status || ""),
+                confidence: Number(edge.confidence || 0),
+            };
+        }
+        return null;
+    }
+
+    function shortGraphLabel(value, limit) {
+        const text = String(value || "").trim();
+        if (text.length <= limit) {
+            return text;
+        }
+        return `${text.slice(0, limit - 3)}...`;
     }
 
     function average(values) {
