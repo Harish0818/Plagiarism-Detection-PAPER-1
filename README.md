@@ -1,95 +1,104 @@
-# Comprehensive Academic Integrity Verification Suite
+# 🛡️ Next-Generation Academic Integrity Verification System
 
-[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![Framework](https://img.shields.io/badge/Framework-Flask-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![HuggingFace](https://img.shields.io/badge/HuggingFace-Transformers-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)](https://huggingface.co/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Backend-Flask-black?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![PyTorch](https://img.shields.io/badge/Deep%20Learning-PyTorch-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Transformers](https://img.shields.io/badge/NLP-HuggingFace%20Transformers-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co/)
+[![Conference](https://img.shields.io/badge/Published-FutureTech%202025%20%7C%20SSRN%20%2F%20Elsevier-0073B7)](#publication--authors)
 
-> An end-to-end multi-layered forensic framework designed to combat modern scholarly threats—identifying **AI-generated text**, detecting semantic **"Idea Theft"** plagiarism, and verifying **citation integrity** using Natural Language Inference (NLI) and live academic graph cross-referencing.
+A multi-layered forensic academic integrity platform that unifies **Semantic Plagiarism Detection**, **AI-Generated Content Identification**, and **Natural Language Inference (NLI) Citation Verification** into a single automated pipeline with Turnitin-style color-coded PDF reporting.
 
 ---
 
-## 📌 Table of Contents
-- [Executive Overview](#-executive-overview)
-- [Key Features](#-key-features)
+## 📋 Table of Contents
+
+- [Overview & Motivation](#-overview--motivation)
 - [System Architecture](#-system-architecture)
-- [Core Analysis Engines](#-core-analysis-engines)
-- [System Performance & Evaluation](#-system-performance--evaluation)
-- [Tech Stack](#-tech-stack)
+- [Core Detection Modules](#-core-detection-modules)
+- [Performance & Evaluation Metrics](#-performance--evaluation-metrics)
+- [Project Structure](#-project-structure)
 - [Installation & Setup](#-installation--setup)
-- [API Reference](#-api-reference)
-- [Forensic PDF Reporting](#-forensic-pdf-reporting)
-- [Research & Publications](#-research--publications)
-- [Contributors](#-contributors)
+- [REST API Reference](#-rest-api-reference)
+- [Forensic PDF Highlight Legend](#-forensic-pdf-highlight-legend)
+- [Publication & Authors](#-publication--authors)
 
 ---
 
-## 🔬 Executive Overview
+## 🎯 Overview & Motivation
 
-Traditional academic integrity tools rely heavily on surface-level keyword matching and static string indexing. These legacy methods fail when confronted with modern scholarly integrity threats:
-1. **Sophisticated Paraphrasing ("Idea Theft")**: Complex concepts rewritten using LLMs to evade string-overlap detectors.
-2. **Citation Hallucinations & Fraud**: Papers citing real or fabricated sources where the cited literature does **not** actually entail or support the student's claims.
-3. **Unrefined AI Detection**: High rate of false positives on academic writing due to lack of stylometric profiling (burstiness and perplexity calibration).
+Traditional string-matching plagiarism tools fail against modern academic integrity challenges:
+* **AI-Assisted Paraphrasing ("Idea Theft"):** Rewriting stolen concepts using LLMs bypasses exact lexical matching.
+* **Hallucinated & Misleading Citations:** Checking only whether a DOI or reference exists fails to verify whether the cited work actually supports the author's claim.
+* **False Positives on Technical Writing:** Standard AI classifiers frequently misclassify formal, domain-heavy human scholarship as machine-generated.
 
-The **Academic Integrity Verification Suite** addresses these critical blind spots by combining causal language model curvature analysis ($Qwen2.5$), sentence transformer manifold alignment ($MPNet$), Natural Language Inference ($DeBERTa-v3$), dynamic live search cross-referencing, and interactive citation graph visualizers.
-
----
-
-## ✨ Key Features
-
-- **Multi-Format Ingress**: Native parsing for standard academic formats (`.pdf`, `.docx`, `.txt`) with integrated Tesseract OCR for embedded figure text extraction.
-- **3-Layered Forensic Engine**:
-  - 🤖 **AI Content Detection**: Probability curvature analysis (Perplexity & Entropy via Causal LM) combined with stylometric profiling (Burstiness & Type-Token Ratio).
-  - ⚖️ **Semantic Plagiarism & Idea Theft**: Siamese SBERT manifold alignment, Auto-Calibrated Thresholds (ACT) for technical jargon, and domain-weighted academic search.
-  - 🔍 **Citation Entailment & Hallucination Check**: DeBERTa-v3 NLI checking that verifies if a source premise logically entails or contradicts the written context.
-- **Dynamic Academic Search Integration**: Queries live scholarly APIs (**Semantic Scholar**, **CrossRef**, **arXiv**, and **OpenAlex**) with rate-limiting, jitter, FAISS indexing, and Redis caching.
-- **Interactive Network Visualization**: 2D, 3D, and community graph visualizations (via NetworkX & Plotly) mapping citation structures and identifying "citation bubbles".
-- **Turnitin-Style PDF Reporting**: Automatic generation of color-coded PDF forensic audits with precision highlights.
+This system solves all three problems through a multi-layer forensic architecture backed by a **Flask REST API** and multi-backend scholarly search (**Semantic Scholar, CrossRef, arXiv, and OpenAlex**).
 
 ---
 
-## 📐 System Architecture
+## 🏗️ System Architecture
 
-The framework is structured as a high-performance web architecture operating across 7 dedicated layers:
+![Next-Generation Academic Integrity Detection System Architecture Diagram](assets/architecture.png)
 
-```
-<img width="2012" height="1099" alt="image" src="https://github.com/user-attachments/assets/4f307b91-b59b-46d4-b214-2e20bd335342" />
-```
+> **Tip:** Save your architecture diagram image as `assets/architecture.png` in the repository root and push it to GitHub so the image renders properly on your repository page.
 
 ---
 
-## ⚙️ Core Analysis Engines
+## 🔬 Core Detection Modules
 
-### 1. 🤖 AI Content Identification
-- **Probability Curvature**: Utilizes causal LMs ($Qwen2.5-0.5B$) to score text predictability via Perplexity ($PPL$) and Token Entropy ($H$).
-- **Stylometric Fingerprinting**:
-  - **Burstiness**: Standard deviation of sentence lengths $\sigma(L_{\text{sentence}})$, distinguishing human structural variability from uniform AI outputs.
-  - **Lexical Diversity**: Measured via Type-Token Ratio ($\text{TTR} = \frac{\text{Unique Words}}{\text{Total Words}}$).
+### 1. Semantic Plagiarism & Idea Theft Detector (`plagiarism.py`)
+* **Manifold Alignment:** Encodes document chunks and candidate abstracts into dense semantic vectors using `paraphrase-multilingual-mpnet-base-v2` (Siamese SBERT) combined with lexical overlap and cross-encoder reranking.
+* **Domain-Aware Database Routing:** Classifies chunk domains (`computer_science`, `medical`, `physics`, `legal`, `business`, `general`) to prioritize relevant scholarly APIs.
+* **Auto-Calibrated Thresholds (ACT):** Dynamically computes baseline thresholds ($\mu + 1.5\sigma$) and applies contextual adjustments for properly cited passages, short chunks, and high technical-term density to prevent false flags.
 
-### 2. ⚖️ Semantic Plagiarism & Idea Theft
-- **Manifold Alignment**: Uses `paraphrase-multilingual-mpnet-base-v2` to calculate vector cosine similarity:
-  $$\text{Similarity}(q, d) = \frac{\vec{v}_q \cdot \vec{v}_d}{\|\vec{v}_q\| \|\vec{v}_d\|}$$
-- **Auto-Calibrated Thresholds (ACT)**: Dynamically adjusts decision boundaries based on technical term density, citation presence, and chunk size to prevent false alarms on standardized academic terminology.
+### 2. Next-Gen AI Content Identifier (`ai_detector.py`)
+* **Probability Curvature & Token Entropy:** Uses causal language modeling (`Qwen/Qwen2.5-0.5B`) to evaluate log-likelihood, perplexity, and predictive entropy across sentences.
+* **Supervised Transformer Classification:** Ensembles LM curvature signals with `desklib/ai-text-detector-v1.01` (`0.25` Perplexity + `0.35` Entropy + `0.40` Classifier).
+* **Linguistic Stylometric Fingerprinting:** Computes sentence length **Burstiness** (standard deviation of sentence lengths), **Lexical Diversity** (Type-Token Ratio), and **Average Sentence Length** to distinguish natural human rhythm from uniform LLM output.
 
-### 3. 🔍 Citation Integrity Analysis
-- **NLI Cross-Referencing**: Employs `cross-encoder/nli-deberta-v3-small` to evaluate logical entailment between claim context (hypothesis) and reference abstracts (premise):
-  - **Entailment**: Claim is mathematically supported by the cited paper.
-  - **Contradiction**: Claim directly conflicts with the cited paper (*Citation Fraud / Hallucination*).
-  - **Neutral**: Reference is contextually irrelevant to the claim made.
+### 3. NLI Citation Integrity Analyzer (`citation_analyzer.py`)
+* **Multi-Style Citation Extraction:** Detects Author-Year (`Smith (2020)`), Parenthetical (`(Smith et al., 2020)`), Bracketed (`[1, 2]`), and raw DOI strings alongside a 300-character surrounding claim window.
+* **Natural Language Inference (NLI) Fact-Checking:** Uses `cross-encoder/nli-deberta-v3-small` to test whether the retrieved source abstract (**premise**) supports the manuscript's claim (**hypothesis**), classifying citations into:
+  * `Entailment` (Valid support)
+  * `Contradiction` (Fraudulent / Misrepresented source)
+  * `Neutral` (Irrelevant citation)
+  * `Source Not Found` (Unverifiable / Hallucinated reference)
+
+### 4. Interactive Citation Network & Reporting (`graph_visualizer.py`, `report_generator.py`)
+* **Network Analytics:** Builds directed citation graphs (`NetworkX`) with PageRank, betweenness centrality, community detection, and interactive 2D/3D Plotly visualizations.
+* **Forensic PDF Export:** Generates annotated PDFs with color-coded highlights and an executive coverage summary header.
 
 ---
 
-## 📊 System Performance & Evaluation
+## 📊 Performance & Evaluation Metrics
 
-The system was evaluated against benchmark scholarly datasets and complex paraphrased academic texts:
-
-### Metric Breakdown
-| Evaluation Domain | Metric Score | Primary Methodology |
+| Evaluation Metric | Score | Description |
 | :--- | :---: | :--- |
-| **Semantic Plagiarism Detection** | **88.0%** | Siamese SBERT + Lexical Alignment |
-| **AI Content Identification** | **85.0%** | Perplexity Curvature + Stylometrics |
-| **Citation Integrity Verification** | **82.0%** | DeBERTa-v3 Contextual NLI |
+| **Overall System Accuracy** | **89.0%** | Weighted multi-engine forensic accuracy across AI, plagiarism, and citation checks |
+| **System Precision** | **0.90** | High false-alarm control to protect genuine human academic writing |
+| **System Recall** | **0.83** | Strong detection rate across paraphrased text and subtle citation contradictions |
+| **Overall F1-Score** | **0.85** | Balanced harmonic mean of precision and recall |
+| **Plagiarism Engine Accuracy** | **88.0%** | Evaluated via Siamese SBERT manifold alignment & ACT filtering |
+| **AI Detection Accuracy** | **85.0%** | Evaluated via Qwen2.5 curvature + Desklib ensemble + stylometrics |
+| **Citation NLI Accuracy** | **82.0%** | Evaluated via DeBERTa-v3 claim-to-abstract entailment verification |
+
+---
+
+## 📁 Project Structure
+
+```text
+Plagiarism-Detection-PAPER-1/
+├── app.py                     # Main Flask web application, REST routes & orchestration engine
+├── text_processing.py         # Multi-format parser (PDF, DOCX, TXT) & Tesseract image OCR
+├── plagiarism.py              # SBERT manifold alignment, domain routing & ACT thresholding
+├── ai_detector.py             # Qwen2.5 perplexity/entropy, Desklib classifier & stylometrics
+├── citation_analyzer.py       # Regex citation extractor & DeBERTa-v3 NLI claim verifier
+├── academic_search.py         # Multi-API client (Semantic Scholar, CrossRef, arXiv, OpenAlex) + FAISS/Redis
+├── graph_visualizer.py        # 2D/3D Plotly & Matplotlib citation network & community graphs
+├── report_generator.py        # Turnitin-style color-coded PDF report generator (PyMuPDF)
+├── evaluation.py              # Evaluation metrics & evidence table generators
+├── assets/                    # Documentation assets (architecture diagram, etc.)
+├── templates/                 # HTML frontend templates
+└── static/                    # CSS, JavaScript & UI assets
 
 ### System-Wide Performance
 ```
