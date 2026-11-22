@@ -1,95 +1,20 @@
+Comprehensive Academic Integrity Verification SuiteAn end-to-end multi-layered forensic framework designed to combat modern scholarly threats—identifying AI-generated text, detecting semantic "Idea Theft" plagiarism, and verifying citation integrity using Natural Language Inference (NLI) and live academic graph cross-referencing.📌 Table of ContentsExecutive OverviewKey FeaturesSystem ArchitectureCore Analysis EnginesSystem Performance & EvaluationTech StackInstallation & SetupAPI ReferenceForensic PDF ReportingResearch & PublicationsContributors🔬 Executive OverviewTraditional academic integrity tools rely heavily on surface-level keyword matching and static string indexing. These legacy methods fail when confronted with modern scholarly integrity threats:Sophisticated Paraphrasing ("Idea Theft"): Complex concepts rewritten using LLMs to evade string-overlap detectors.Citation Hallucinations & Fraud: Papers citing real or fabricated sources where the cited literature does not actually entail or support the student's claims.Unrefined AI Detection: High rate of false positives on academic writing due to lack of stylometric profiling (burstiness and perplexity calibration).The Academic Integrity Verification Suite addresses these critical blind spots by combining causal language model curvature analysis ($Qwen2.5$), sentence transformer manifold alignment ($MPNet$), Natural Language Inference ($DeBERTa-v3$), dynamic live search cross-referencing, and interactive citation graph visualizers.✨ Key FeaturesMulti-Format Ingress: Native parsing for standard academic formats (.pdf, .docx, .txt) with integrated Tesseract OCR for embedded figure text extraction.3-Layered Forensic Engine:🤖 AI Content Detection: Probability curvature analysis (Perplexity & Entropy via Causal LM) combined with stylometric profiling (Burstiness & Type-Token Ratio).⚖️ Semantic Plagiarism & Idea Theft: Siamese SBERT manifold alignment, Auto-Calibrated Thresholds (ACT) for technical jargon, and domain-weighted academic search.🔍 Citation Entailment & Hallucination Check: DeBERTa-v3 NLI checking that verifies if a source premise logically entails or contradicts the written context.Dynamic Academic Search Integration: Queries live scholarly APIs (Semantic Scholar, CrossRef, arXiv, and OpenAlex) with rate-limiting, jitter, FAISS indexing, and Redis caching.Interactive Network Visualization: 2D, 3D, and community graph visualizations (via NetworkX & Plotly) mapping citation structures and identifying "citation bubbles".Turnitin-Style PDF Reporting: Automatic generation of color-coded PDF forensic audits with precision highlights.📐 System ArchitectureThe framework is structured as a high-performance web architecture operating across 7 dedicated layers:
+<img width="2012" height="1099" alt="image" src="https://github.com/user-attachments/assets/e3ce4fd2-cfa1-4f4a-8e31-efc170f6f140" />
 
-🔍 Advanced Plagiarism Detection System
-A comprehensive, AI-powered tool for detecting plagiarism, AI-generated content, and analyzing citations in academic documents. Built with Python and Streamlit, this system helps researchers, educators, and students maintain academic integrity.
+⚙️ Core Analysis Engines1. 🤖 AI Content IdentificationProbability Curvature: Utilizes causal LMs ($Qwen2.5-0.5B$) to score text predictability via Perplexity ($PPL$) and Token Entropy ($H$).Stylometric Fingerprinting:Burstiness: Standard deviation of sentence lengths $\sigma(L_{\text{sentence}})$, distinguishing human structural variability from uniform AI outputs.Lexical Diversity: Measured via Type-Token Ratio ($\text{TTR} = \frac{\text{Unique Words}}{\text{Total Words}}$).2. ⚖️ Semantic Plagiarism & Idea TheftManifold Alignment: Uses paraphrase-multilingual-mpnet-base-v2 to calculate vector cosine similarity:$$\text{Similarity}(q, d) = \frac{\vec{v}_q \cdot \vec{v}_d}{\Vert{}\vec{v}_q\Vert{} \Vert{}\vec{v}_d\Vert{}}$$Auto-Calibrated Thresholds (ACT): Dynamically adjusts decision boundaries based on technical term density, citation presence, and chunk size to prevent false alarms on standardized academic terminology.3. 🔍 Citation Integrity AnalysisNLI Cross-Referencing: Employs cross-encoder/nli-deberta-v3-small to evaluate logical entailment between claim context (hypothesis) and reference abstracts (premise):Entailment: Claim is mathematically supported by the cited paper.Contradiction: Claim directly conflicts with the cited paper (Citation Fraud / Hallucination).Neutral: Reference is contextually irrelevant to the claim made.📊 System Performance & EvaluationThe system was evaluated against benchmark scholarly datasets and complex paraphrased academic texts:Metric BreakdownEvaluation DomainMetric ScorePrimary MethodologySemantic Plagiarism Detection88.0%Siamese SBERT + Lexical AlignmentAI Content Identification85.0%Perplexity Curvature + StylometricsCitation Integrity Verification82.0%DeBERTa-v3 Contextual NLISystem-Wide PerformanceOverall System Accuracy :  89.0%
+System Precision        :  0.900  (Minimizes false accusations on human work)
+System Recall           :  0.830  (Captures heavily paraphrased text)
+Overall F1-Score        :  0.850  (Balanced forensic reliability)
+🛠️ Tech StackCore Backend: Python 3.9+, FlaskDeep Learning / NLP: PyTorch, Hugging Face transformers, sentence-transformersSearch & Vector Indexing: FAISS, Redis, Requests HTTP PoolVisualization: Plotly, Matplotlib, NetworkX, SeabornPDF & Document Engine: PyMuPDF (fitz), python-docx, pytesseractFrontend: HTML5, CSS3, JavaScript (ES6+), Tailwind / Custom Component Styling🚀 Installation & SetupPrerequisitesPython 3.9 or higherTesseract OCR engine (Optional, for scanned PDF OCR support)Redis server (Optional, for multi-level query caching)1. Clone the Repositorygit clone https://github.com/your-username/academic-integrity-suite.git
+cd academic-integrity-suite
+2. Create and Activate Virtual Environment# On Linux/macOS
+python3 -m venv venv
+source venv/bin/activate
 
-✨ Features
-📄 Multi-Format Support: Analyze PDF, DOCX, and TXT documents
-
-🔍 Plagiarism Detection: Identify copied content using semantic similarity matching with academic databases
-
-🤖 AI Content Detection: Detect AI-generated text using ensemble models and pattern analysis
-
-📚 Citation Analysis: Validate citations and check contextual relevance
-
-🌐 Network Visualization: Interactive citation network graphs
-
-📊 Comprehensive Reporting: Detailed metrics, performance statistics, and export capabilities
-
-⚙️ Configurable Thresholds: Adjustable sensitivity for different detection scenarios
-
-
-🚀 Quick Start
-Prerequisites
-Python 3.8 or higher
-
-pip (Python package manager)
-
-
-🛠️ Usage
-Upload Documents: Click "Browse files" to upload PDF, DOCX, or TXT files
-
-Adjust Settings: Use the sliders in the sidebar to set detection thresholds
-
-Run Analysis: The system will automatically process all uploaded files
-
-Review Results: Explore the findings through the interactive tabs:
-
-Summary: Overview of detected issues across all documents
-
-Detailed Analysis: Document-specific findings and evidence
-
-Citation Network: Visual representation of citation relationships
-
-Metrics: Performance statistics and execution times
-
-Evaluation: System performance metrics and confusion matrice
-
-
-📁 Project Structure:
-plagiarism-detection-system/
-├── app.py                 # Main Streamlit application
-├── requirements.txt       # Python dependencies
-├── utils/                 # Core functionality modules
-│   ├── text_processing.py # Document extraction and text processing
-│   ├── plagiarism.py      # Plagiarism detection logic
-│   ├── ai_detector.py     # AI content detection
-│   ├── citation_analyzer.py # Citation validation and analysis
-│   ├── academic_search.py # Academic database integration
-│   ├── graph_visualizer.py # Network visualization
-│   ├── metrics.py         # Performance tracking
-│   └── evaluation.py      # Evaluation metrics calculation
-├── tests/                 # Test utilities
-│   └── test_data_generator.py # Test case generation
-└── README.md             # This file
-
-
-🔧 Configuration
-The system provides several configurable parameters:
-
-Plagiarism Similarity Threshold (0.5-1.0): Controls sensitivity for plagiarism detection
-
-AI Detection Confidence Threshold (0.1-1.0): Adjusts sensitivity for AI-generated content detection
-
-API Rate Limiting: Built-in delays to respect academic API limits
-
-
-🌐 API Integrations
-The system integrates with several academic APIs:
-
-Semantic Scholar API: For academic paper search and similarity matching
-
-CrossRef API: Fallback for citation validation and metadata retrieval
-
-
-📊 Outputs
-The system generates comprehensive reports including:
-
-Document-level summary statistics
-
-Detailed evidence of detected issues
-
-Citation network visualizations
-
-Performance metrics and execution times
-
-Exportable CSV files for further analysis
+# On Windows
+python -m venv venv
+venv\Scripts\activate
+3. Install Dependenciespip install --upgrade pip
+pip install -r requirements.txt
+4. Run the Applicationpython app.py
+Open http://127.0.0.1:5000 in your web browser.📡 API Reference1. Single Document AnalysisEndpoint: POST /analyzeContent-Type: multipart/form-dataBody: file (PDF, DOCX, TXT)Response: JSON containing raw text, AI metrics, plagiarism matches, citation entailment status, and evaluation tables.2. Batch AnalysisEndpoint: POST /analyze-batchContent-Type: multipart/form-dataBody: files (Multiple documents)Response: Comparative document risk matrix and aggregate statistics.3. Export PDF ReportEndpoint: POST /generate-reportContent-Type: multipart/form-dataForm Data: file, report_type (full, ai, plagiarism, citations)Response: Downloadable highlighted PDF document.📄 Forensic PDF ReportingThe suite includes an automated PDF generation engine powered by PyMuPDF:🟨 Yellow Highlights: Verbatim and semantic plagiarism matches.🟦 Cyan Highlights: Passages identified as AI-generated.🟥 Red Highlights: Citation contradictions and unverified claims.📋 Header Summary Box: Embeds target vs. observed highlight coverage metadata.📜 Research & PublicationsThis framework was presented at the International Conference on FutureTech: AI-Driven Innovations for Sustainable Development Goals (FutureTech - 2025):Paper Title: Comprehensive Academic Integrity Verification: Plagiarism, AI-Content and Citation AnalysisPublication Partners: SSRN / ElsevierOrganized By: Institute of Technical and Scientific Research (ITSR), Jaipur, India (Dec 22-23, 2025)👥 ContributorsHariharan K (Reg No: 312422243050) – St. Joseph's Institute of TechnologyHarish B (Reg No: 312422243053) – St. Joseph's Institute of TechnologyGuided By: Dr. M.K. Kirubakaran, M.E., Ph.D.📝 LicenseDistributed under the MIT License. See LICENSE for more information.
