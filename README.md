@@ -37,9 +37,7 @@ This system solves all three problems through a multi-layer forensic architectur
 
 ## 🏗️ System Architecture
 
-![Next-Generation Academic Integrity Detection System Architecture Diagram](assets/architecture.png)
-
-> **Tip:** Save your architecture diagram image as `assets/architecture.png` in the repository root and push it to GitHub so the image renders properly on your repository page.
+![System Architecture Diagram](image-3.png)
 
 ---
 
@@ -96,7 +94,7 @@ Plagiarism-Detection-PAPER-1/
 ├── graph_visualizer.py        # 2D/3D Plotly & Matplotlib citation network & community graphs
 ├── report_generator.py        # Turnitin-style color-coded PDF report generator (PyMuPDF)
 ├── evaluation.py              # Evaluation metrics & evidence table generators
-├── assets/                    # Documentation assets (architecture diagram, etc.)
+├── image-3.png                # System architecture diagram
 ├── templates/                 # HTML frontend templates
 └── static/                    # CSS, JavaScript & UI assets
 
