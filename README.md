@@ -54,7 +54,7 @@ The **Academic Integrity Verification Suite** addresses these critical blind spo
 The framework is structured as a high-performance web architecture operating across 7 dedicated layers:
 
 ```
-![alt text](image-1.png)
+<img width="2012" height="1099" alt="image" src="https://github.com/user-attachments/assets/833aa1ed-0c03-447c-b6d9-ccda5d77d90a" />
 ```
 
 ---
